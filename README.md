@@ -156,11 +156,28 @@ pip install -r ai-product-scene-generator/requirements.txt   # Pillow（ComfyUI 
 例：`python scripts/generate.py --surface-line-frac 0.82 --scale-mult 1.1 --offset-x 20`。
 `offset_x/offset_y/scale_mult` 也可寫進 `config/product.json` 的 `overrides` 當持久預設（CLI 會蓋過它）。
 
+**Phase 6 — 背景後端（自帶背景 / 多後端）**：背景那步可切兩種後端，後半段（深度接地、
+漸層陰影、幾何、合成）兩者共用。
+
+| 後端 | 怎麼觸發 | 行為 |
+|---|---|---|
+| `comfyui`（預設） | 不給 `--bg`、`generation.json` `backend:comfyui` | 讀產品配光 → 生成 9:16 空背景（現狀全自動） |
+| `manual` | `--bg <path>`，或 `backend:manual` + `manual_bg_path` | 用你現成的背景（Midjourney / GPT / 自拍），**跳過生成** |
+
+- 優先序：`--bg` > `config`。`manual` 缺圖會明確報錯。
+- 手動背景**吃實際尺寸**當畫框（任意比例都能跑）；非 9:16 印軟警告、**不自動裁**（要 9:16 自己先裁好）。原圖不被修改。
+- 手動模式的陰影落向用 `--shadow-dir left|right|none`（預設 `right`）——它在全自動模式也能覆蓋產品配光分析的落向。
+- ⚠️ 合成貼產品仍走 ComfyUI，故 `manual` 後端**仍需 ComfyUI server 開著**（只為合成、不生成）。
+- Midjourney 沒有官方 API、GPT image 要金鑰＋付費——`manual` 後端就是繞過這些的通用解：任何工具生的背景都能丟進來接。
+
+例：`python scripts/generate.py --server 127.0.0.1:8188 --bg ~/mj_scene.png --shadow-dir left`。
+
 ## 授權
 
 本專案採 **MIT**（見 `LICENSE`）。範例引用的模型有各自的授權，不在本授權範圍內。
 
 ## 狀態
 
-V2 完成：Phase 1/2/2.5 管線 + Phase 3（深度自動接地 + 人工修正介面）+ Phase 4 節點包打包。
+V2 完成：Phase 1/2/2.5 管線 + Phase 3（深度自動接地 + 人工修正介面）+ Phase 4 節點包打包
++ Phase 5（漸層接觸陰影 + 難例選面加固 + K 自適應）+ Phase 6（自帶背景 / 多後端）。
 詳見 `PLAN.md` 與 `plans/`。

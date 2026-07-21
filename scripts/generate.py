@@ -113,6 +113,52 @@ def effective_overrides(product_cfg: dict, args) -> dict:
     return ov
 
 
+def resolve_backend(gen: dict, args, root: Path):
+    """Pick the background backend and (for manual) the image path. Precedence
+    (Phase 6): --bg wins and implies manual; else config `backend`.
+      - comfyui: generate the background with ComfyUI (returns path None)
+      - manual : use a ready-made background (MJ / GPT / photo), skip generation
+    Returns (backend, bg_path). Raises ValueError if manual has no image."""
+    if getattr(args, "bg", None) is not None:
+        return "manual", Path(args.bg)
+    backend = str(gen.get("backend", "comfyui")).strip().lower()
+    if backend == "manual":
+        mp = gen.get("manual_bg_path")
+        if not mp:
+            raise ValueError(
+                "backend 'manual' needs a background image: pass --bg <path> "
+                "or set generation.json manual_bg_path")
+        p = Path(mp)
+        return "manual", (p if p.is_absolute() else root / p)
+    return "comfyui", None
+
+
+def frame_from_background(bg_path: Path) -> tuple[int, int]:
+    """Read a manual background's ACTUAL pixel size to use as the frame — the
+    pipeline (geometry / composite) works relative to this, so any aspect ratio
+    runs (Phase 6). Warns if it isn't ~9:16 but does NOT crop or resize."""
+    with Image.open(bg_path) as im:
+        w, h = im.size
+    ratio = w / h
+    target = 9 / 16
+    if abs(ratio - target) > 0.02:
+        print(f"⚠️  background is {w}x{h} ({ratio:.3f}), not 9:16 ({target:.3f}). "
+              f"Output will be this aspect; crop it yourself first if you want 9:16.")
+    return w, h
+
+
+def resolve_shadow_dir(backend: str, args, profile) -> str:
+    """Where the cast shadow falls. --shadow-dir wins in BOTH modes; else manual
+    defaults to 'right' (no product-light analysis there), comfyui uses the
+    product-light analysis (Phase 2)."""
+    cli = getattr(args, "shadow_dir", None)
+    if cli is not None:
+        return cli
+    if backend == "manual":
+        return "right"
+    return profile.shadow_dir
+
+
 def build_geometry(crop, frame_w, frame_h, product_cfg: dict, surface_frac: float,
                    overrides: dict, shadow_dir: str) -> G.Geometry:
     return G.compute(crop.width, crop.height, frame_w, frame_h,
@@ -132,6 +178,14 @@ def main(argv=None) -> int:
     ap.add_argument("--root", default=str(ROOT), help="project root")
     ap.add_argument("--server", default="127.0.0.1:8188", help="ComfyUI host:port")
     ap.add_argument("--product", default=None, help="override product_image path")
+    # --- Phase 6: background backend ---
+    ap.add_argument("--bg", default=None,
+                    help="use a ready-made background image (MJ/GPT/photo); "
+                         "implies manual backend, skips ComfyUI generation")
+    ap.add_argument("--shadow-dir", dest="shadow_dir", default=None,
+                    choices=["left", "right", "none"],
+                    help="cast-shadow direction; overrides product-light analysis "
+                         "(manual backend defaults to right)")
     ap.add_argument("--dry-run", action="store_true",
                     help="validate + geometry only, no ComfyUI calls")
     ap.add_argument("--fixed-surface", action="store_true",
@@ -157,7 +211,13 @@ def main(argv=None) -> int:
     gen = load_json(root / "config" / "generation.json")
 
     product_path = Path(args.product or (root / product_cfg["product_image"]))
-    frame_w, frame_h = int(gen["width"]), int(gen["height"])
+
+    # --- Phase 6: pick the background backend (--bg > config) ---
+    try:
+        backend, bg_src = resolve_backend(gen, args, root)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
 
     # --- fail fast: reject non-transparent input BEFORE touching ComfyUI ---
     try:
@@ -166,14 +226,29 @@ def main(argv=None) -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
-    # --- product-led lighting: analyze the product, drive the bg prompt ---
-    profile = AL.analyze(product_img)
-    scene_render = dict(scene_cfg)
-    if str(scene_cfg.get("lighting", "")).strip().lower() == "auto":
-        scene_render["lighting"] = profile.lighting_clause()
-        print(f"lighting: AUTO from product -> {profile.lighting_clause()}")
-    else:
-        print(f"lighting: manual (scene.json) -> {scene_cfg.get('lighting')}")
+    # --- product-led lighting (comfyui only): analyze the product, drive the bg
+    #     prompt. In manual mode the background is already made, so we skip this
+    #     (nothing to prompt) — Phase 6 decision #4. ---
+    profile = None
+    positive = None
+    if backend == "comfyui":
+        profile = AL.analyze(product_img)
+        scene_render = dict(scene_cfg)
+        if str(scene_cfg.get("lighting", "")).strip().lower() == "auto":
+            scene_render["lighting"] = profile.lighting_clause()
+            print(f"lighting: AUTO from product -> {profile.lighting_clause()}")
+        else:
+            print(f"lighting: manual (scene.json) -> {scene_cfg.get('lighting')}")
+        positive, _negative = PB.load_prompts(root, scene_render)
+        frame_w, frame_h = int(gen["width"]), int(gen["height"])
+    else:  # manual: use the ready-made background's ACTUAL size as the frame
+        if not bg_src.exists():
+            print(f"ERROR: background image not found: {bg_src}", file=sys.stderr)
+            return 2
+        print(f"backend : manual -> {bg_src}")
+        frame_w, frame_h = frame_from_background(bg_src)
+
+    shadow_dir = resolve_shadow_dir(backend, args, profile)
 
     # --- tight-crop the product now (needed for both geometry and upload).
     #     The contact-surface line is resolved LATER, once the background
@@ -183,13 +258,10 @@ def main(argv=None) -> int:
     cropped.parent.mkdir(parents=True, exist_ok=True)
     crop.save(cropped)
 
-    positive, _negative = PB.load_prompts(root, scene_render)
-    seed = random.randint(0, 2**63 - 1) if int(gen["seed"]) < 0 else int(gen["seed"])
     eff_ov = effective_overrides(product_cfg, args)
-    print(f"seed    : {seed}")
 
     if args.dry_run:
-        # no background yet -> manual line if given, else the config line
+        # no depth pass in dry-run -> manual line if given, else the config line
         if args.surface_line_frac is not None:
             frac = float(args.surface_line_frac)
             print(f"surface : MANUAL -> {frac:.3f}")
@@ -197,11 +269,13 @@ def main(argv=None) -> int:
             frac = float(scene_cfg["surface_line_frac"])
             print(f"surface : dry-run uses config -> {frac:.3f}")
         g = build_geometry(crop, frame_w, frame_h, product_cfg, frac, eff_ov,
-                           profile.shadow_dir)
-        print_geometry(g, product_path, profile.shadow_dir)
-        print("dry-run: skipping ComfyUI. geometry OK.")
+                           shadow_dir)
+        print_geometry(g, product_path, shadow_dir)
+        print(f"dry-run: skipping ComfyUI. backend={backend}, "
+              f"frame={frame_w}x{frame_h}. geometry OK.")
         return 0
 
+    # composite runs on ComfyUI in BOTH backends, so we need the server either way
     client = ComfyClient(args.server)
     if not client.ping():
         print(f"ERROR: cannot reach ComfyUI at {args.server}. Is it running?",
@@ -209,22 +283,27 @@ def main(argv=None) -> int:
         return 3
 
     try:
-        # --- Stage 1: background ---
-        bg_graph = load_json(root / "workflows" / "comfyui_api" / "bg_generate_api.json")
-        inject_background(bg_graph, positive, gen, seed)
-        bg_out = root / gen.get("bg_output_path", "outputs/backgrounds/background.png")
-        bg_bytes = client.run(bg_graph, save_to=bg_out)
-        if not bg_bytes:
-            print("ERROR: background stage produced no image", file=sys.stderr)
-            return 4
-        print(f"background saved -> {bg_out}")
+        # --- Stage 1: obtain the background ---
+        if backend == "comfyui":
+            bg_graph = load_json(root / "workflows" / "comfyui_api" / "bg_generate_api.json")
+            seed = random.randint(0, 2**63 - 1) if int(gen["seed"]) < 0 else int(gen["seed"])
+            print(f"seed    : {seed}")
+            inject_background(bg_graph, positive, gen, seed)
+            bg_out = root / gen.get("bg_output_path", "outputs/backgrounds/background.png")
+            bg_bytes = client.run(bg_graph, save_to=bg_out)
+            if not bg_bytes:
+                print("ERROR: background stage produced no image", file=sys.stderr)
+                return 4
+            print(f"background saved -> {bg_out}")
+        else:  # manual: the ready-made image IS the background (left untouched)
+            bg_out = bg_src
 
-        # --- Phase 3: resolve the contact surface FROM the generated bg,
+        # --- Phase 3: resolve the contact surface FROM the background,
         #     then compute geometry against it ---
         frac = resolve_surface(bg_out, scene_cfg, args)
         g = build_geometry(crop, frame_w, frame_h, product_cfg, frac, eff_ov,
-                           profile.shadow_dir)
-        print_geometry(g, product_path, profile.shadow_dir)
+                           shadow_dir)
+        print_geometry(g, product_path, shadow_dir)
 
         # --- Phase 5: bake the contact shadow into the bg before upload ---
         bg_shadowed = root / "outputs" / "composites" / "_bg_with_shadow.png"

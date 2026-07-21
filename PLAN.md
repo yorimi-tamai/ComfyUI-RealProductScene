@@ -46,6 +46,12 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
     9 張回歸 fixtures 無誤觸；驗收報告 `outputs/phase5_validation/report.html`
   - #4 反射明確排除 V2（要畫產品沒有的像素、逼近「不改產品」紅線）；AO 併入 #1
   - ⚠️ 殘留：玻璃桌看穿/強傾斜靠人工鈕兜底；反射不做
+- ✅ **Phase 6 — 自帶背景 / 多後端**（`plans/phase6-byo-background.md`，done，live 驗證）
+  - 把管線從「綁 ComfyUI 生成」解成可切後端：`backend: comfyui | manual`（`--bg` > config）
+  - manual 後端吃任意來源（MJ/GPT/自拍）現成背景、跳過生成＋配光、跑後半段；`--shadow-dir` 指落向
+  - 吃背景實際尺寸＋非 9:16 軟警告＋不裁；MJ/GPT 官方 API 不接（手動背景即解）
+  - 測試 `test_backend.py`(13) 全綠、既有不回歸；manual live 1024² 接地、comfyui 回歸正常
+  - ⚠️ 合成仍走 ComfyUI，故 manual 仍需 server（只為合成）
 
 ## 階段依賴
 

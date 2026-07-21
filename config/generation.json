@@ -1,4 +1,6 @@
 {
+  "backend": "comfyui",
+  "manual_bg_path": null,
   "width": 576,
   "height": 1024,
   "seed": -1,
