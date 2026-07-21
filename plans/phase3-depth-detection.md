@@ -1,7 +1,7 @@
-# Phase 2 — 深度圖自動偵測水平面 — Plan
+# Phase 3 — 深度圖自動偵測水平面 — Plan
 
 > 把接觸線 surface_y 從 config 固定值換成每張生成圖用深度圖自動求得；失敗 fallback
-> 狀態：draft（Phase 1 完成後才開工）
+> 狀態：draft（Phase 2 之後）
 > 最後更新：2026-07-21
 
 ## 為什麼做

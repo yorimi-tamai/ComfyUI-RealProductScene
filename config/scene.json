@@ -1,7 +1,7 @@
 {
   "scene": "modern minimalist living room",
   "visual_style": "high-end commercial product photography",
-  "lighting": "soft natural window light coming from the left",
+  "lighting": "auto",
   "camera": "eye-level medium shot",
   "reserved_space": "clean, empty tabletop at the lower-center of the frame, ready to place the product",
   "surface_line_frac": 0.78

@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import geometry as G
 import prompt_builder as PB
+import analyze_product_light as AL
 from comfy_client import ComfyClient, ComfyUIError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -84,25 +85,34 @@ def main(argv=None) -> int:
 
     # --- fail fast: reject non-transparent input BEFORE touching ComfyUI ---
     try:
-        cropped = root / "outputs" / "composites" / "_product_cropped.png"
-        g = G.prepare_product(
-            product_path, cropped, frame_w, frame_h,
-            product_cfg["target_box"], scene_cfg["surface_line_frac"],
-            product_cfg.get("overrides", {}),
-        )
-    except G.NoAlphaError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        return 2
-    except FileNotFoundError as e:
+        product_img = G.load_transparent_png(product_path)
+    except (G.NoAlphaError, FileNotFoundError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
 
-    positive, _negative = PB.load_prompts(root)
+    # --- product-led lighting: analyze the product, drive the bg prompt ---
+    profile = AL.analyze(product_img)
+    scene_render = dict(scene_cfg)
+    if str(scene_cfg.get("lighting", "")).strip().lower() == "auto":
+        scene_render["lighting"] = profile.lighting_clause()
+        print(f"lighting: AUTO from product -> {profile.lighting_clause()}")
+    else:
+        print(f"lighting: manual (scene.json) -> {scene_cfg.get('lighting')}")
+
+    # --- geometry (shadow falls per the product's light direction) ---
+    cropped = root / "outputs" / "composites" / "_product_cropped.png"
+    g = G.prepare_product(
+        product_path, cropped, frame_w, frame_h,
+        product_cfg["target_box"], scene_cfg["surface_line_frac"],
+        product_cfg.get("overrides", {}), profile.shadow_dir,
+    )
+
+    positive, _negative = PB.load_prompts(root, scene_render)
     seed = random.randint(0, 2**63 - 1) if int(gen["seed"]) < 0 else int(gen["seed"])
 
     print(f"product : {product_path.name} -> {g.product_w}x{g.product_h} "
           f"@({g.product_x},{g.product_y})  base@{g.product_y + g.product_h} "
-          f"(surface {g.surface_y})")
+          f"(surface {g.surface_y})  shadow_dir={profile.shadow_dir}")
     print(f"shadow  : {g.shadow_w}x{g.shadow_h} @({g.shadow_x},{g.shadow_y}) "
           f"opacity {g.shadow_opacity} blur {g.shadow_blur}")
     print(f"seed    : {seed}")

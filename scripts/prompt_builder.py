@@ -26,10 +26,16 @@ def build_positive(scene_cfg: dict, template_text: str) -> str:
     return text.strip()
 
 
-def load_prompts(project_root: str | Path = ".") -> tuple[str, str]:
-    """Return (positive_prompt, negative_prompt) built from project files."""
+def load_prompts(project_root: str | Path = ".",
+                 scene_cfg: dict | None = None) -> tuple[str, str]:
+    """Return (positive_prompt, negative_prompt) built from project files.
+
+    Pass `scene_cfg` to override what's on disk (e.g. after substituting an
+    auto-derived lighting clause); otherwise config/scene.json is read."""
     root = Path(project_root)
-    scene_cfg = json.loads((root / "config" / "scene.json").read_text(encoding="utf-8"))
+    if scene_cfg is None:
+        scene_cfg = json.loads(
+            (root / "config" / "scene.json").read_text(encoding="utf-8"))
     template = (root / "prompts" / "scene_prompt_template.txt").read_text(encoding="utf-8")
     negative = (root / "prompts" / "negative_prompt.txt").read_text(encoding="utf-8").strip()
     positive = build_positive(scene_cfg, template)

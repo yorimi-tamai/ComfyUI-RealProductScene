@@ -75,8 +75,10 @@ def tight_crop(img: Image.Image) -> Image.Image:
 
 
 def compute(crop_w: int, crop_h: int, frame_w: int, frame_h: int,
-            target_box: dict, surface_line_frac: float, overrides: dict) -> Geometry:
-    """All placement math. Product base lands exactly on the surface line."""
+            target_box: dict, surface_line_frac: float, overrides: dict,
+            shadow_dir: str = "right") -> Geometry:
+    """All placement math. Product base lands exactly on the surface line.
+    `shadow_dir` (left|right|none) sets which way the cast shadow falls."""
     ov = {
         "scale_mult": 1.0, "offset_x": 0, "offset_y": 0,
         "shadow_opacity": 0.30, "shadow_blur": 8, "shadow_offset_y": 0,
@@ -99,7 +101,8 @@ def compute(crop_w: int, crop_h: int, frame_w: int, frame_h: int,
     #    nudged slightly toward the light-opposite side (light from left -> right)
     shadow_w = product_w
     shadow_h = max(1, round(product_w * 0.35))
-    shadow_x = round(product_x + product_w * 0.05)
+    sign = {"left": -1, "right": 1, "none": 0}.get(shadow_dir, 1)
+    shadow_x = round(product_x + product_w * 0.05 * sign)
     shadow_y = round(surface_y - shadow_h / 2 + float(ov["shadow_offset_y"]))
 
     return Geometry(
@@ -115,7 +118,8 @@ def compute(crop_w: int, crop_h: int, frame_w: int, frame_h: int,
 
 def prepare_product(product_path: str | Path, cropped_out: str | Path,
                     frame_w: int, frame_h: int, target_box: dict,
-                    surface_line_frac: float, overrides: dict) -> Geometry:
+                    surface_line_frac: float, overrides: dict,
+                    shadow_dir: str = "right") -> Geometry:
     """End-to-end: validate + tight-crop + save cropped PNG + compute geometry.
     The cropped PNG at `cropped_out` is what gets uploaded to ComfyUI."""
     img = load_transparent_png(product_path)
@@ -123,4 +127,4 @@ def prepare_product(product_path: str | Path, cropped_out: str | Path,
     Path(cropped_out).parent.mkdir(parents=True, exist_ok=True)
     crop.save(cropped_out)
     return compute(crop.width, crop.height, frame_w, frame_h,
-                   target_box, surface_line_frac, overrides)
+                   target_box, surface_line_frac, overrides, shadow_dir)
