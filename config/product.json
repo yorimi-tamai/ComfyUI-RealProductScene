@@ -2,7 +2,16 @@
   "product_name": "Sample Product",
   "product_type": "generic",
   "product_image": "inputs/products/product.png",
-  "scale": 1.0,
-  "position_x": 0.5,
-  "position_y": 0.78
+  "target_box": {
+    "width_frac": 0.60,
+    "height_frac": 0.42
+  },
+  "overrides": {
+    "scale_mult": 1.0,
+    "offset_x": 0,
+    "offset_y": 0,
+    "shadow_opacity": 0.30,
+    "shadow_blur": 8,
+    "shadow_offset_y": 0
+  }
 }

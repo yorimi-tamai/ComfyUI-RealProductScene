@@ -1,0 +1,204 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "product_scene_composite_v2",
+      "images": [
+        "69",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "儲存圖片"
+    }
+  },
+  "63": {
+    "inputs": {
+      "image": "removebackground1784602526011.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "載入圖片"
+    }
+  },
+  "65": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "width": 320,
+      "height": 416,
+      "crop": "disabled",
+      "image": [
+        "63",
+        0
+      ]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "放大圖片"
+    }
+  },
+  "69": {
+    "inputs": {
+      "x": 130,
+      "y": 415,
+      "resize_source": false,
+      "destination": [
+        "79",
+        0
+      ],
+      "source": [
+        "65",
+        0
+      ],
+      "mask": [
+        "71",
+        0
+      ]
+    },
+    "class_type": "ImageCompositeMasked",
+    "_meta": {
+      "title": "影像合成（產品，疊在陰影上方）"
+    }
+  },
+  "71": {
+    "inputs": {
+      "mask": [
+        "63",
+        1
+      ]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "反轉遮罩"
+    }
+  },
+  "72": {
+    "inputs": {
+      "mask": [
+        "71",
+        0
+      ]
+    },
+    "class_type": "MaskToImage",
+    "_meta": {
+      "title": "遮罩轉影像（陰影來源）"
+    }
+  },
+  "73": {
+    "inputs": {
+      "upscale_method": "bilinear",
+      "width": 320,
+      "height": 130,
+      "crop": "disabled",
+      "image": [
+        "72",
+        0
+      ]
+    },
+    "class_type": "ImageScale",
+    "_meta": {
+      "title": "壓扁陰影（比產品遮罩扁）"
+    }
+  },
+  "74": {
+    "inputs": {
+      "blur_radius": 8,
+      "sigma": 6.0,
+      "image": [
+        "73",
+        0
+      ]
+    },
+    "class_type": "ImageBlur",
+    "_meta": {
+      "title": "陰影模糊"
+    }
+  },
+  "75": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "74",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "影像轉遮罩（陰影形狀）"
+    }
+  },
+  "76": {
+    "inputs": {
+      "value": 0.3,
+      "width": 320,
+      "height": 130
+    },
+    "class_type": "SolidMask",
+    "_meta": {
+      "title": "陰影不透明度（0.3）"
+    }
+  },
+  "77": {
+    "inputs": {
+      "destination": [
+        "75",
+        0
+      ],
+      "source": [
+        "76",
+        0
+      ],
+      "x": 0,
+      "y": 0,
+      "operation": "multiply"
+    },
+    "class_type": "MaskComposite",
+    "_meta": {
+      "title": "套用陰影不透明度"
+    }
+  },
+  "78": {
+    "inputs": {
+      "width": 320,
+      "height": 130,
+      "batch_size": 1,
+      "color": 1710618
+    },
+    "class_type": "EmptyImage",
+    "_meta": {
+      "title": "陰影顏色（深灰）"
+    }
+  },
+  "79": {
+    "inputs": {
+      "x": 130,
+      "y": 700,
+      "resize_source": false,
+      "destination": [
+        "80",
+        0
+      ],
+      "source": [
+        "78",
+        0
+      ],
+      "mask": [
+        "77",
+        0
+      ]
+    },
+    "class_type": "ImageCompositeMasked",
+    "_meta": {
+      "title": "合成陰影到背景（先於產品）"
+    }
+  },
+  "80": {
+    "inputs": {
+      "image": "psg_bg.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "載入背景"
+    }
+  }
+}
