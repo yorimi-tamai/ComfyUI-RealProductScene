@@ -1,7 +1,7 @@
 # AI Product Scene Generator — Master Roadmap
 
 > 通用可客製產品情境合成管線：一張去背 PNG + 背景提示詞 → 自動產出場景合成產品照
-> 狀態：in-progress
+> 狀態：in-progress（V1 + Phase 1–5 全完成並 live 驗證）
 > 最後更新：2026-07-21
 
 ## 大方向
@@ -38,6 +38,14 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
   - tensor 只在節點進出口轉、內部 PIL 原封；產品走 IMAGE+MASK 拼 RGBA；範例綁 z-image-turbo + README 換模型指南；MIT
   - ⚠️ **刻意翻轉下方「不用自訂節點」的排除項**——為發佈而為之的架構決定
   - Phase 3 深度偵測順延（不進 v1）；CLI 保留自用
+- ✅ **Phase 5 — 品質打磨（合成擬真度）**（`plans/phase5-quality-polish.md`，done，live 驗證）
+  - 降貼圖感：#1 漸層接觸陰影（含 AO，`shadow.py` 生成橢圓徑向漸層貼圖，Python `bake_shadow`
+    合成進背景取代 ComfyUI 矩形色塊）＋ #2 難例選面加固（次大面≥70%→曖昧走 fallback）
+    ＋ #3 `front_k` 隨 band span 自適應（clip 0.5+0.6·span, [0.5,0.8]）
+  - 陰影參數 live 校準：op0.58/core0.28/falloff1.4/flatten0.24；測試 shadow13+detect15+manual9 全綠、
+    9 張回歸 fixtures 無誤觸；驗收報告 `outputs/phase5_validation/report.html`
+  - #4 反射明確排除 V2（要畫產品沒有的像素、逼近「不改產品」紅線）；AO 併入 #1
+  - ⚠️ 殘留：玻璃桌看穿/強傾斜靠人工鈕兜底；反射不做
 
 ## 階段依賴
 

@@ -158,9 +158,17 @@ def _analyze_depth(depth: np.ndarray) -> dict:
 
     if not bands:
         return {"ok": False, "bands": [], "H": H, "W": W, "d": d,
+                "n_bands": 0, "runner_up_ratio": 0.0,
                 "total_depth_span": float(d.max() - d.min())}
 
     # dominant plane = band with the largest vertical extent
+    extents = sorted((b[1] - b[0] + 1 for b in bands), reverse=True)
+    # how big is the SECOND plane relative to the dominant one? Two comparably
+    # sized horizontal planes (stacked steps / platform+floor / a see-through
+    # glass top exposing the floor) => genuinely ambiguous which one a centred
+    # product rests on. Caller falls back rather than guessing wrong.
+    runner_up_ratio = (extents[1] / extents[0]) if len(extents) >= 2 and extents[0] else 0.0
+
     y0, y1 = max(bands, key=lambda b: b[1] - b[0])
     span = (y1 - y0 + 1) / H
     top_frac = y0 / H
@@ -183,16 +191,28 @@ def _analyze_depth(depth: np.ndarray) -> dict:
         "ok": True, "bands": bands, "H": H, "W": W, "d": d,
         "top_frac": top_frac, "band_span": span,
         "band_top": y0, "band_bottom": y1,
+        "n_bands": len(bands), "runner_up_ratio": float(runner_up_ratio),
         "width_frac": float(np.clip(width_frac, 0.0, 1.0)),
         "total_depth_span": float(depth.max() - depth.min()),
     }
+
+
+def adaptive_front_k(span: float) -> float:
+    """Map a plane's vertical span to how far down it the contact line sits.
+
+    A large span means a long surface receding far toward the camera: the far
+    edge is deep in the scene, so the product must be pushed further toward the
+    NEAR edge to look grounded (bigger k). A shallow band is already near the
+    viewer, so a smaller k keeps the base off the very front lip. Linear in span,
+    clamped to a sane range. Replaces the Phase 3 global k=0.6 (decision #5)."""
+    return float(np.clip(0.50 + 0.60 * float(span), 0.50, 0.80))
 
 
 def detect_surface(
     image,
     fallback_frac: float = 0.78,
     min_confidence: float = 0.45,
-    front_k: float = 0.6,
+    front_k: Optional[float] = None,
     model_id: str = MODEL_ID,
     device: Optional[str] = None,
 ) -> SurfaceResult:
@@ -256,6 +276,19 @@ def detect_surface(
             conf=min(confidence, 0.3),
             detected=round(top_frac, 3), width=a["width_frac"])
 
+    # --- stacked / see-through ambiguity (Phase 5 #2): a runner-up plane nearly
+    #     as large as the dominant one means we can't reliably tell which surface
+    #     the product should rest on (stacked steps, platform+floor, a glass top
+    #     exposing the floor). Fall back rather than pick the wrong plane. ---
+    runner_up = a.get("runner_up_ratio", 0.0)
+    if runner_up >= 0.70:
+        return fb(
+            f"ambiguous stacked/see-through planes (runner-up {runner_up:.2f} "
+            f"of dominant across {a.get('n_bands', 0)} bands); can't tell which "
+            f"to rest on; fallback",
+            conf=min(confidence, 0.3),
+            detected=round(top_frac, 3), width=a["width_frac"])
+
     if confidence < min_confidence:
         return fb(
             f"low confidence {confidence:.2f} (span={span:.2f}, "
@@ -267,8 +300,9 @@ def detect_surface(
     # surface in front -> reads as floating (see plans/ Task 4 diagnosis). Move
     # `front_k` of the way down the plane toward the viewer, clamped inside the
     # band and off the very bottom of the frame.
+    k = adaptive_front_k(span) if front_k is None else float(front_k)
     near_frac = a["band_bottom"] / a["H"]
-    contact = top_frac + front_k * span
+    contact = top_frac + k * span
     contact = min(contact, near_frac, 0.92)
     contact = max(contact, top_frac)
 
@@ -276,8 +310,8 @@ def detect_surface(
         frac=round(float(contact), 4), confidence=confidence, used_fallback=False,
         width_frac=a["width_frac"], detected_frac=round(float(contact), 4),
         reason=(f"surface plane [{top_frac:.2f}-{near_frac:.2f}], "
-                f"contact @ {contact:.3f} (k={front_k}, conf={confidence:.2f}, "
-                f"span={span:.2f}, width={a['width_frac']:.2f})"),
+                f"contact @ {contact:.3f} (k={k:.2f}{'auto' if front_k is None else ''}, "
+                f"conf={confidence:.2f}, span={span:.2f}, width={a['width_frac']:.2f})"),
     )
 
 
@@ -289,8 +323,9 @@ def _main(argv=None) -> int:
     ap.add_argument("images", nargs="+", help="background image path(s)")
     ap.add_argument("--fallback", type=float, default=0.78)
     ap.add_argument("--min-conf", type=float, default=0.45)
-    ap.add_argument("--front-k", type=float, default=0.6,
-                    help="how far down the plane the contact line sits (0=far edge)")
+    ap.add_argument("--front-k", type=float, default=None,
+                    help="how far down the plane the contact line sits (0=far edge); "
+                         "default None = adaptive from band span")
     ap.add_argument("--overlay-dir", default=None,
                     help="if set, save an <name>_overlay.png with the detected line")
     args = ap.parse_args(argv)

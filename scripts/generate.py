@@ -22,11 +22,14 @@ import random
 import sys
 from pathlib import Path
 
+from PIL import Image
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import geometry as G
 import prompt_builder as PB
 import analyze_product_light as AL
 import detect_surface as DS
+import shadow as SH
 from comfy_client import ComfyClient, ComfyUIError
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,34 +53,33 @@ def inject_background(graph: dict, positive: str, gen: dict, seed: int) -> None:
 
 def inject_composite(graph: dict, bg_name: str, product_name: str, g: G.Geometry,
                      filename_prefix: str) -> None:
-    graph["80"]["inputs"]["image"] = bg_name            # LoadImage background
+    # The contact shadow is baked into the background in Python (bake_shadow)
+    # BEFORE upload, so the graph only has to drop the product onto it.
+    graph["80"]["inputs"]["image"] = bg_name            # LoadImage background (+shadow)
     graph["63"]["inputs"]["image"] = product_name       # LoadImage product (cropped)
     graph["65"]["inputs"]["width"] = g.product_w        # product ImageScale
     graph["65"]["inputs"]["height"] = g.product_h
     graph["69"]["inputs"]["x"] = g.product_x            # product composite
     graph["69"]["inputs"]["y"] = g.product_y
-    graph["73"]["inputs"]["width"] = g.shadow_w         # shadow flatten
-    graph["73"]["inputs"]["height"] = g.shadow_h
-    graph["74"]["inputs"]["blur_radius"] = g.shadow_blur  # shadow blur
-    graph["76"]["inputs"]["value"] = g.shadow_opacity   # shadow opacity
-    graph["76"]["inputs"]["width"] = g.shadow_w
-    graph["76"]["inputs"]["height"] = g.shadow_h
-    graph["78"]["inputs"]["width"] = g.shadow_w         # shadow color canvas
-    graph["78"]["inputs"]["height"] = g.shadow_h
-    graph["79"]["inputs"]["x"] = g.shadow_x             # spread shadow composite
-    graph["79"]["inputs"]["y"] = g.shadow_y
-    # contact core (tight, dark, low-blur layer hugging the base)
-    graph["81"]["inputs"]["width"] = g.core_w           # core flatten
-    graph["81"]["inputs"]["height"] = g.core_h
-    graph["82"]["inputs"]["blur_radius"] = g.core_blur  # core blur
-    graph["84"]["inputs"]["value"] = g.core_opacity     # core opacity
-    graph["84"]["inputs"]["width"] = g.core_w
-    graph["84"]["inputs"]["height"] = g.core_h
-    graph["86"]["inputs"]["width"] = g.core_w           # core color canvas
-    graph["86"]["inputs"]["height"] = g.core_h
-    graph["87"]["inputs"]["x"] = g.core_x               # core composite
-    graph["87"]["inputs"]["y"] = g.core_y
     graph["9"]["inputs"]["filename_prefix"] = filename_prefix
+
+
+def bake_shadow(bg_path: Path, g: G.Geometry, out_path: Path) -> Path:
+    """Composite the elliptical radial-gradient contact shadow onto the
+    generated background (Phase 5). Runs before the product is placed, so the
+    product will sit on top of its own shadow. Pure PIL — the sticker's alpha
+    gradient composites cleanly, no ComfyUI mask plumbing."""
+    bg = Image.open(bg_path).convert("RGBA")
+    sticker = SH.radial_shadow(
+        g.shadow_w, g.shadow_h, opacity=g.shadow_opacity,
+        falloff=g.shadow_falloff, core_frac=g.shadow_core_frac,
+        feather=g.shadow_feather)
+    layer = Image.new("RGBA", bg.size, (0, 0, 0, 0))
+    layer.paste(sticker, (g.shadow_x, g.shadow_y), sticker)
+    out = Image.alpha_composite(bg, layer).convert("RGB")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out.save(out_path)
+    return out_path
 
 
 def resolve_surface(bg_path, scene_cfg: dict, args) -> float:
@@ -121,10 +123,8 @@ def print_geometry(g: G.Geometry, product_path: Path, shadow_dir: str) -> None:
     print(f"product : {product_path.name} -> {g.product_w}x{g.product_h} "
           f"@({g.product_x},{g.product_y})  base@{g.product_y + g.product_h} "
           f"(surface {g.surface_y})  shadow_dir={shadow_dir}")
-    print(f"shadow  : spread {g.shadow_w}x{g.shadow_h}@({g.shadow_x},{g.shadow_y}) "
-          f"op{g.shadow_opacity}/bl{g.shadow_blur} | "
-          f"core {g.core_w}x{g.core_h}@({g.core_x},{g.core_y}) "
-          f"op{g.core_opacity:.2f}/bl{g.core_blur}")
+    print(f"shadow  : sticker {g.shadow_w}x{g.shadow_h}@({g.shadow_x},{g.shadow_y}) "
+          f"op{g.shadow_opacity} falloff{g.shadow_falloff} core{g.shadow_core_frac}")
 
 
 def main(argv=None) -> int:
@@ -226,8 +226,12 @@ def main(argv=None) -> int:
                            profile.shadow_dir)
         print_geometry(g, product_path, profile.shadow_dir)
 
-        # --- Stage 2: composite ---
-        bg_name = client.upload_image(bg_out)
+        # --- Phase 5: bake the contact shadow into the bg before upload ---
+        bg_shadowed = root / "outputs" / "composites" / "_bg_with_shadow.png"
+        bake_shadow(bg_out, g, bg_shadowed)
+
+        # --- Stage 2: composite (product only; shadow already in the bg) ---
+        bg_name = client.upload_image(bg_shadowed)
         product_name = client.upload_image(cropped)
         comp_graph = load_json(root / "workflows" / "comfyui_api" / "composite_api.json")
         inject_composite(comp_graph, bg_name, product_name, g, "product_scene_v2")

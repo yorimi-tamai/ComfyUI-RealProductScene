@@ -10,8 +10,6 @@
     "scale_mult": 1.0,
     "offset_x": 0,
     "offset_y": 0,
-    "shadow_opacity": 0.30,
-    "shadow_blur": 8,
     "shadow_offset_y": 0
   }
 }
