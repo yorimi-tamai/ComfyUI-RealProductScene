@@ -28,6 +28,11 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
   - ⚠️ 仍非完美：柔散層邊緣略帶方形、整體仍是「去背圖貼生成背景」本質
 - ⬜ **Phase 3 — 深度圖自動偵測水平面**（`plans/phase3-depth-detection.md`，draft）
   - 把接觸線從 config 固定值換成每張生成圖自動偵測；失敗 fallback 回固定值
+- ⬜ **Phase 4 — 打包成 ComfyUI 自訂節點包並發佈**（未規劃，需獨立 grill/plan-it）
+  - 目標：讓其他 ComfyUI 使用者經 Manager/git 裝來用（UI 內一份可載入工作流）
+  - 把 Python 邏輯(geometry/analyze/prompt)包成自訂節點(tensor 改寫)、附範例 .json、README、LICENSE、模型需求說明
+  - ⚠️ **刻意翻轉下方「不用自訂節點」的排除項**——為發佈而為之的架構決定
+  - 產品級要求：模型無關、健壯性、文件；是產品化跳躍，非小改
 
 ## 階段依賴
 
