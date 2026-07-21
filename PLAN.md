@@ -26,8 +26,12 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
   - 在柔散陰影下疊緊實深色低模糊接觸核，合成序：背景→柔散→接觸核→產品
   - 已 live 驗證（同 seed 對比）：基座接觸感明顯優於單層均勻霧
   - ⚠️ 仍非完美：柔散層邊緣略帶方形、整體仍是「去背圖貼生成背景」本質
-- ⬜ **Phase 3 — 深度圖自動偵測水平面**（`plans/phase3-depth-detection.md`，draft）
-  - 把接觸線從 config 固定值換成每張生成圖自動偵測；失敗 fallback 回固定值
+- ✅ **Phase 3 — 深度圖自動偵測水平面 + 人工修正介面**（`plans/phase3-depth-detection.md`，done，live 驗證）
+  - 接觸線從 config 固定值換成每張生成圖自動偵測（transformers `Depth-Anything-V2-Small`，跑 ComfyUI `.venv`/MPS，零新套件）；失敗/傾斜/低信心 fallback 回固定值
+  - 選面：主導（最大縱向）水平面；接觸線取**近端/前緣** `band_top + K·span`（K=0.6）——修掉「取遠端上緣→產品飄空」的首驗 FAIL
+  - **人工修正介面**（自動只 ~70-80% 準）：CLI 四鈕 `--surface-line-frac` / `--offset-x` / `--offset-y` / `--scale-mult`，優先序 manual > fixed > auto
+  - 驗證：3 種桌面高度全接地 + fresh 全自動接地；`tests/` 兩支單元測試（detect 11 + manual 9）；scope 限正面/微俯，強傾斜面 fallback
+  - ⚠️ 殘留：接觸陰影仍偏軟（淡灰暈，Phase 2.5 範疇）；玻璃/多層堆疊等難例靠 fallback + 人工鈕兜底
 - ✅ **Phase 4 — 打包成 ComfyUI 自訂節點包並發佈**（`plans/phase4-comfyui-node-pack.md`，done，live 驗證）
   - 目標：公開 GitHub repo，讓其他 ComfyUI 使用者 git-clone 裝來用（UI 內一份可載入的範例工作流）；Manager registry 順延
   - 兩顆節點：`AnalyzeProductLighting`（生成前，產品→prompt+shadow_dir）＋ `CompositeProductScene`（生成後，整包裁切/幾何/雙層陰影/合成）；都 import 現有共用大腦
