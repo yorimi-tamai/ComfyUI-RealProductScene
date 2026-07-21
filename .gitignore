@@ -1,0 +1,20 @@
+# OS / editor junk
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Generated output images (keep folder structure via .gitkeep)
+outputs/**/*.png
+outputs/**/*.jpg
+outputs/**/*.jpeg
+outputs/**/*.webp
+
+# User-supplied inputs (keep folders, ignore actual assets)
+inputs/**/*.png
+inputs/**/*.jpg
+inputs/**/*.jpeg
+inputs/**/*.webp

@@ -1,0 +1,9 @@
+{
+  "width": 576,
+  "height": 1024,
+  "seed": -1,
+  "steps": 30,
+  "cfg": 6.5,
+  "sampler": "euler",
+  "output_path": "outputs/backgrounds/background.png"
+}

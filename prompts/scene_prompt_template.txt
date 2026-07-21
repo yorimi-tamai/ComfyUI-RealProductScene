@@ -1,0 +1,10 @@
+Professional commercial photograph of a {scene}, {visual_style}.
+The frame is EMPTY — do NOT include any product, item, bottle, box, or object on the surface.
+There is a clean, uncluttered flat surface ready for a product to be placed on it later.
+The intended product spot is at the lower-center of the frame, kept completely empty and unobstructed.
+Lighting: {lighting}, with a clear and consistent light direction.
+Camera: {camera}.
+Reserved space: {reserved_space}.
+Clear spatial depth with distinct foreground, midground, and background layers.
+Realistic photography, natural materials, true-to-life colors, sharp focus, clean composition.
+Composed as a vertical 9:16 portrait shot, suitable as a stable starting frame for image-to-video.

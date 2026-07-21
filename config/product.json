@@ -1,0 +1,8 @@
+{
+  "product_name": "Sample Product",
+  "product_type": "generic",
+  "product_image": "inputs/products/product.png",
+  "scale": 1.0,
+  "position_x": 0.5,
+  "position_y": 0.78
+}

@@ -1,0 +1,9 @@
+product, item, bottle, box, object on surface, merchandise,
+person, people, human, hands, fingers,
+logo, brand mark, text, letters, typography, watermark, signature,
+cluttered scene, messy, busy background,
+deformed furniture, warped furniture, distorted geometry,
+tilted table, slanted surface, crooked tabletop,
+excessive depth of field, heavy bokeh, blurry,
+low quality, low resolution, jpeg artifacts, noise,
+illustration, painting, drawing, cartoon, anime, 3d render, cgi
