@@ -72,6 +72,74 @@ ai-product-scene-generator/
 - `config/scene.json` — 場景描述，欄位對應 prompt 模板中的替換變數
 - `config/generation.json` — 生成尺寸與取樣參數。V1 尺寸為 576 × 1024（9:16）
 
+## ComfyUI 自訂節點包（V2）
+
+V2 把管線包成兩顆 ComfyUI 自訂節點，讓你在 ComfyUI 介面裡直接跑。核心約束不變：
+**產品像素 100% 不改**（不重繪、不改 Logo/文字/結構）。
+
+### 兩顆節點
+
+| 節點 | 時機 | 輸入 | 輸出 |
+|---|---|---|---|
+| **Analyze Product Lighting** | 生成背景**前** | 產品 `IMAGE`+`MASK`、場景描述欄位、`lighting_mode`（auto/manual） | `positive_prompt`、`negative_prompt`、`shadow_dir` |
+| **Composite Product Scene** | 生成背景**後** | 背景 `IMAGE`、產品 `IMAGE`+`MASK`、`shadow_dir`、`surface_line_frac` 等微調鈕 | 最終合成 `IMAGE` |
+
+「產品主導配光」：Analyze 讀產品照的色溫/明暗/柔硬/光向，寫進背景 prompt，讓 AI 生成的
+場景**遷就產品的光**；同一分析也決定陰影落向。Composite 自動緊裁去背產品、等比塞進目標框、
+把底部貼到接觸線，並鋪一層柔散 + 一層緊實接觸核的雙層陰影。
+
+> ⚠️ 產品輸入**必須是已去背、具透明度的 PNG**（用 `LoadImage`，把它的 `IMAGE` 與 `MASK`
+> 兩個輸出都接進節點）。接了沒有透明度的圖，節點會直接報錯（本專案不做自動去背）。
+
+### 安裝
+
+```bash
+cd ComfyUI/custom_nodes
+git clone <this-repo-url> ai-product-scene-generator
+pip install -r ai-product-scene-generator/requirements.txt   # Pillow（ComfyUI 通常已內建）
+# 重啟 ComfyUI
+```
+
+重啟後，節點選單的 `product-scene` 分類下會出現 **Analyze Product Lighting** 與
+**Composite Product Scene**。
+
+### 範例工作流
+
+`workflows/comfyui_api/product_scene_example_api.json`（API 格式）串好整條：
+`LoadImage(產品) → Analyze → CLIP Encode → KSampler → 空背景 → Composite → SaveImage`。
+把產品去背 PNG 命名為 `product.png` 放進 ComfyUI 的 input 資料夾即可跑。
+
+### 模型需求（範例綁 z-image-turbo）
+
+範例的**生成段**是為 z-image-turbo 調的，需要這三個檔：
+
+| 用途 | 檔名 | 節點 |
+|---|---|---|
+| 擴散模型 | `z_image_turbo_bf16.safetensors` | UNETLoader |
+| CLIP | `qwen_3_4b.safetensors`（type `lumina2`） | CLIPLoader |
+| VAE | `ae.safetensors` | VAELoader |
+
+> 這些模型有各自的授權，請依其原始授權使用；本專案未打包模型、僅在範例中引用。
+
+### 換成別的模型
+
+兩顆自訂節點**與模型無關**——它們不管背景是誰生的。要換模型時，只改範例裡「生背景」那一段：
+
+- **KSampler**：`steps` / `cfg` / `sampler_name` / `scheduler`（turbo 是 8 步、cfg 1、
+  res_multistep/simple；一般 SDXL 類要改成各自合適值，否則會壞）
+- **模型/CLIP/VAE 載入器**：換成你的 checkpoint（若是單檔 checkpoint，可用 `CheckpointLoaderSimple` 取代三顆載入器）
+- **ModelSamplingAuraFlow**：非 AuraFlow/Lumina 類模型可移除
+- **EmptySD3LatentImage**：依模型的 latent 需求替換
+
+### CLI（自用，非發佈重點）
+
+`python scripts/generate.py --server 127.0.0.1:8188`（需 Pillow 環境）仍可用，走 HTTP 打
+ComfyUI 的兩個 API graph。它是開發/回歸測試用途，不對外承諾維護。
+
+## 授權
+
+本專案採 **MIT**（見 `LICENSE`）。範例引用的模型有各自的授權，不在本授權範圍內。
+
 ## 狀態
 
-規格初版建立完成，尚未撰寫程式，尚未接上 ComfyUI。
+V2 節點包完成（Phase 1/2/2.5 管線 + Phase 4 打包）。詳見 `PLAN.md` 與 `plans/`。

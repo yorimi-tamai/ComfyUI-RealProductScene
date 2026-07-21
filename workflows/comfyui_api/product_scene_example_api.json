@@ -1,0 +1,130 @@
+{
+  "load_product": {
+    "inputs": {
+      "image": "product.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": { "title": "Load product (cut-out PNG)" }
+  },
+  "analyze": {
+    "inputs": {
+      "product_image": ["load_product", 0],
+      "product_mask": ["load_product", 1],
+      "scene": "modern minimalist living room",
+      "visual_style": "high-end commercial product photography",
+      "camera": "eye-level medium shot",
+      "reserved_space": "clean, empty tabletop at the lower-center of the frame, ready to place the product",
+      "lighting_mode": "auto",
+      "manual_lighting": "soft natural light, from the upper left, balanced exposure"
+    },
+    "class_type": "AnalyzeProductLighting",
+    "_meta": { "title": "Analyze Product Lighting (product-led)" }
+  },
+  "unet": {
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": { "title": "Load diffusion model (z-image-turbo)" }
+  },
+  "clip": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": { "title": "Load CLIP" }
+  },
+  "vae": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": { "title": "Load VAE" }
+  },
+  "model_sampling": {
+    "inputs": {
+      "shift": 3,
+      "model": ["unet", 0]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": { "title": "Model Sampling AuraFlow" }
+  },
+  "clip_pos": {
+    "inputs": {
+      "text": ["analyze", 0],
+      "clip": ["clip", 0]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": { "title": "CLIP Text Encode (prompt from AnalyzeProductLighting)" }
+  },
+  "cond_zero": {
+    "inputs": {
+      "conditioning": ["clip_pos", 0]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": { "title": "Negative (zeroed; cfg=1 for turbo)" }
+  },
+  "latent": {
+    "inputs": {
+      "width": 576,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": { "title": "Empty latent 576x1024 (9:16)" }
+  },
+  "ksampler": {
+    "inputs": {
+      "seed": 913405293254945,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["model_sampling", 0],
+      "positive": ["clip_pos", 0],
+      "negative": ["cond_zero", 0],
+      "latent_image": ["latent", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": { "title": "KSampler (turbo: 8 steps, cfg 1)" }
+  },
+  "vae_decode": {
+    "inputs": {
+      "samples": ["ksampler", 0],
+      "vae": ["vae", 0]
+    },
+    "class_type": "VAEDecode",
+    "_meta": { "title": "VAE Decode -> empty background" }
+  },
+  "composite": {
+    "inputs": {
+      "background": ["vae_decode", 0],
+      "product_image": ["load_product", 0],
+      "product_mask": ["load_product", 1],
+      "shadow_dir": ["analyze", 2],
+      "surface_line_frac": 0.78,
+      "target_width_frac": 0.6,
+      "target_height_frac": 0.42,
+      "scale_mult": 1.0,
+      "offset_x": 0,
+      "offset_y": 0,
+      "shadow_opacity": 0.3,
+      "shadow_blur": 8,
+      "shadow_offset_y": 0
+    },
+    "class_type": "CompositeProductScene",
+    "_meta": { "title": "Composite Product Scene (geometry + 2-layer shadow)" }
+  },
+  "save": {
+    "inputs": {
+      "filename_prefix": "product_scene_v2",
+      "images": ["composite", 0]
+    },
+    "class_type": "SaveImage",
+    "_meta": { "title": "Save final composite" }
+  }
+}
