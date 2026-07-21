@@ -61,8 +61,19 @@ def inject_composite(graph: dict, bg_name: str, product_name: str, g: G.Geometry
     graph["76"]["inputs"]["height"] = g.shadow_h
     graph["78"]["inputs"]["width"] = g.shadow_w         # shadow color canvas
     graph["78"]["inputs"]["height"] = g.shadow_h
-    graph["79"]["inputs"]["x"] = g.shadow_x             # shadow composite
+    graph["79"]["inputs"]["x"] = g.shadow_x             # spread shadow composite
     graph["79"]["inputs"]["y"] = g.shadow_y
+    # contact core (tight, dark, low-blur layer hugging the base)
+    graph["81"]["inputs"]["width"] = g.core_w           # core flatten
+    graph["81"]["inputs"]["height"] = g.core_h
+    graph["82"]["inputs"]["blur_radius"] = g.core_blur  # core blur
+    graph["84"]["inputs"]["value"] = g.core_opacity     # core opacity
+    graph["84"]["inputs"]["width"] = g.core_w
+    graph["84"]["inputs"]["height"] = g.core_h
+    graph["86"]["inputs"]["width"] = g.core_w           # core color canvas
+    graph["86"]["inputs"]["height"] = g.core_h
+    graph["87"]["inputs"]["x"] = g.core_x               # core composite
+    graph["87"]["inputs"]["y"] = g.core_y
     graph["9"]["inputs"]["filename_prefix"] = filename_prefix
 
 
@@ -113,8 +124,10 @@ def main(argv=None) -> int:
     print(f"product : {product_path.name} -> {g.product_w}x{g.product_h} "
           f"@({g.product_x},{g.product_y})  base@{g.product_y + g.product_h} "
           f"(surface {g.surface_y})  shadow_dir={profile.shadow_dir}")
-    print(f"shadow  : {g.shadow_w}x{g.shadow_h} @({g.shadow_x},{g.shadow_y}) "
-          f"opacity {g.shadow_opacity} blur {g.shadow_blur}")
+    print(f"shadow  : spread {g.shadow_w}x{g.shadow_h}@({g.shadow_x},{g.shadow_y}) "
+          f"op{g.shadow_opacity}/bl{g.shadow_blur} | "
+          f"core {g.core_w}x{g.core_h}@({g.core_x},{g.core_y}) "
+          f"op{g.core_opacity:.2f}/bl{g.core_blur}")
     print(f"seed    : {seed}")
 
     if args.dry_run:

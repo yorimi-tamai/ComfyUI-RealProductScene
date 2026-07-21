@@ -27,13 +27,20 @@ class Geometry:
     product_h: int
     product_x: int
     product_y: int
-    # shadow (feeds nodes 73/74/76/78/79)
+    # soft spread shadow (feeds nodes 73/74/76/78/79)
     shadow_w: int
     shadow_h: int
     shadow_x: int
     shadow_y: int
     shadow_opacity: float
     shadow_blur: int
+    # tight contact core (feeds nodes 81/82/84/86/87)
+    core_w: int
+    core_h: int
+    core_x: int
+    core_y: int
+    core_opacity: float
+    core_blur: int
     # context
     surface_y: int
 
@@ -99,19 +106,33 @@ def compute(crop_w: int, crop_h: int, frame_w: int, frame_h: int,
 
     # 3. contact shadow: flatter than product, centered on the contact line,
     #    nudged slightly toward the light-opposite side (light from left -> right)
+    sign = {"left": -1, "right": 1, "none": 0}.get(shadow_dir, 1)
+    off_y = float(ov["shadow_offset_y"])
+    base_op = float(ov["shadow_opacity"])
+    base_blur = int(ov["shadow_blur"])
+
+    # soft spread: wide, flat, low opacity, heavy blur -> ambient falloff
     shadow_w = product_w
     shadow_h = max(1, round(product_w * 0.35))
-    sign = {"left": -1, "right": 1, "none": 0}.get(shadow_dir, 1)
     shadow_x = round(product_x + product_w * 0.05 * sign)
-    shadow_y = round(surface_y - shadow_h / 2 + float(ov["shadow_offset_y"]))
+    shadow_y = round(surface_y - shadow_h / 2 + off_y)
+
+    # contact core: narrower, much flatter, darker, tight blur -> hugs the base
+    core_w = max(1, round(product_w * 0.92))
+    core_h = max(1, round(shadow_h * 0.45))
+    core_x = round(product_x + (product_w - core_w) / 2 + product_w * 0.03 * sign)
+    core_y = round(surface_y - core_h / 2 + off_y)
+    core_opacity = min(0.75, base_op * 1.8)
+    core_blur = max(2, round(base_blur * 0.4))
 
     return Geometry(
         product_w=product_w, product_h=product_h,
         product_x=product_x, product_y=product_y,
         shadow_w=shadow_w, shadow_h=shadow_h,
         shadow_x=shadow_x, shadow_y=shadow_y,
-        shadow_opacity=float(ov["shadow_opacity"]),
-        shadow_blur=int(ov["shadow_blur"]),
+        shadow_opacity=base_op, shadow_blur=base_blur,
+        core_w=core_w, core_h=core_h, core_x=core_x, core_y=core_y,
+        core_opacity=core_opacity, core_blur=core_blur,
         surface_y=surface_y,
     )
 
