@@ -4,5 +4,5 @@
   "lighting": "soft natural window light coming from the left",
   "camera": "eye-level medium shot",
   "reserved_space": "clean, empty tabletop at the lower-center of the frame, ready to place the product",
-  "surface_line_frac": 0.62
+  "surface_line_frac": 0.78
 }

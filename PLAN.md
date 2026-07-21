@@ -14,9 +14,10 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
 ## 進度
 
 - ✅ **V1 — 手動合成 workflow + 接觸陰影**（已驗證，見 `handoff-archive/…接觸陰影｜#1…`）
-- 🔄 **Phase 1 — 確定性幾何管線**（`plans/phase1-geometry.md`，in-progress）
+- ✅ **Phase 1 — 確定性幾何管線**（`plans/phase1-geometry.md`，done）
   - Python 編排 + 拆兩個 API workflow + alpha 緊裁/塞目標框/擺位/陰影自適應 + config 微調鈕
-  - 平面接觸線先用 config 可調固定值
+  - 平面接觸線先用 config 可調固定值；已 live 驗證端到端（藤籃產品接地成功）
+  - ⚠️ 已知限制：隨機 seed 下背景桌面位置會變，固定 `surface_line_frac` 需手動對——正是 Phase 2 要自動化的
 - ⬜ **Phase 2 — 深度圖自動偵測水平面**（`plans/phase2-depth-detection.md`，draft）
   - 把接觸線從 config 固定值換成每張生成圖自動偵測；失敗 fallback 回 Phase 1 固定值
 
