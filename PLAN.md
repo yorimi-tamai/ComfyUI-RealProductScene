@@ -1,9 +1,9 @@
 # AI Product Scene Generator — Master Roadmap
 
 > 通用可客製產品情境合成管線：一張去背 PNG + 背景提示詞 → 自動產出場景合成產品照
-> 狀態：in-progress（V1 + Phase 1–7 全完成並 live 驗證；Phase 4 節點包已公開發佈為 `ComfyUI-RealProductScene`）
+> 狀態：主線收斂（V1 + Phase 1–7 全完成並 live 驗證；Phase 4 節點包已公開發佈為 `ComfyUI-RealProductScene`，並於 2026-07-22 **上架 ComfyUI Registry**：<https://registry.comfy.org/nodes/comfyui-realproductscene>。roadmap 所有里程碑打勾；剩選做項＝repo 品相打磨＋技術殘留軌）
 > repo：<https://github.com/yorimi-tamai/ComfyUI-RealProductScene>（本地資料夾仍為 `ai-product-scene-generator`）
-> 最後更新：2026-07-22
+> 最後更新：2026-07-22（B3 registry 上架完成）
 
 ## 大方向
 
@@ -40,7 +40,7 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
   - ⚠️ **刻意翻轉下方「不用自訂節點」的排除項**——為發佈而為之的架構決定
   - Phase 3 深度偵測順延（不進 v1）；CLI 保留自用
   - ✅ **發佈收尾（2026-07-22，見 `handoff-archive/…Phase4發佈公開repo｜#1…`）**：改名 `ai-product-scene-generator` → **`ComfyUI-RealProductScene`**（合 registry `ComfyUI-` 慣例）、LICENSE 版權人 → `zeczec`、公開到 <https://github.com/yorimi-tamai/ComfyUI-RealProductScene>（個人帳號、Public、HEAD `cf83a13`）。本地資料夾仍叫 `ai-product-scene-generator`
-  - ⬜ **B3 待辦：ComfyUI Manager registry 上架**——發佈最後一哩，獨立里程碑（需裝 `gh` + 補 registry metadata + 開 PR 過審核）
+  - ✅ **B3 完成（2026-07-22）：ComfyUI Registry 上架**——發佈最後一哩。實際流程與舊記的「開 PR 過審核」不同：現行為 registry.comfy.org + `pyproject.toml` metadata，**不用開 PR**。做法：裝 Homebrew→`gh`→`gh auth login`；建 publisher `yorimi`（PublisherId 永久不可改）+ 產 API key 存成 repo secret `REGISTRY_ACCESS_TOKEN`；加 `pyproject.toml`（`[tool.comfy]` PublisherId/DisplayName/Repository + `[project]` name=`comfyui-realproductscene`/version 1.0.0/deps）+ GitHub Action `publish_action.yml`（push pyproject 版本號→自動 publish）。已 live：<https://registry.comfy.org/nodes/comfyui-realproductscene>（status `NodeStatusActive`、publisher `yorimi` active）。之後改版只要 bump `pyproject.toml` version 再 push 即自動重發
 - ✅ **Phase 5 — 品質打磨（合成擬真度）**（`plans/phase5-quality-polish.md`，done，live 驗證）
   - 降貼圖感：#1 漸層接觸陰影（含 AO，`shadow.py` 生成橢圓徑向漸層貼圖，Python `bake_shadow`
     合成進背景取代 ComfyUI 矩形色塊）＋ #2 難例選面加固（次大面≥70%→曖昧走 fallback）
