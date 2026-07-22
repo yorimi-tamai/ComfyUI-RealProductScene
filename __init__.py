@@ -1,4 +1,4 @@
-"""ComfyUI entry point for the ai-product-scene-generator node pack.
+"""ComfyUI entry point for the ComfyUI-RealProductScene node pack.
 
 When this repo is cloned into ComfyUI/custom_nodes/, ComfyUI loads this file and
 reads NODE_CLASS_MAPPINGS from it. The actual node code lives in the comfyui_nodes/

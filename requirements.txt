@@ -1,4 +1,4 @@
-# ai-product-scene-generator dependencies
+# ComfyUI-RealProductScene dependencies
 #
 # torch and numpy are provided by the ComfyUI host environment and are not
 # pinned here. Pillow is the only extra dependency the node "brain" needs;

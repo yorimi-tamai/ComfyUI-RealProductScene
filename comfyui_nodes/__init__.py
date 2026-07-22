@@ -1,4 +1,4 @@
-"""ai-product-scene-generator — ComfyUI custom node pack.
+"""ComfyUI-RealProductScene — ComfyUI custom node pack.
 
 Wraps the V2 Python "brain" (see ../scripts/) as ComfyUI nodes so the pipeline
 can run inside ComfyUI and be shared with other users. Two nodes:

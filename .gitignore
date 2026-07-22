@@ -12,6 +12,7 @@ outputs/**/*.png
 outputs/**/*.jpg
 outputs/**/*.jpeg
 outputs/**/*.webp
+outputs/**/*.html
 
 # User-supplied inputs (keep folders, ignore actual assets)
 inputs/**/*.png
