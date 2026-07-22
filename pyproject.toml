@@ -1,0 +1,17 @@
+[project]
+name = "comfyui-realproductscene"
+description = "Composite a real cut-out product PNG into an AI-generated scene: geometry-adaptive placement, grounding shadows, product-led lighting, and a GPT-scene swap backend — the product pixels stay 100% real."
+version = "1.0.0"
+license = { file = "LICENSE" }
+dependencies = [
+    "Pillow>=9.0.0",
+    "opencv-python>=4.8.0",
+]
+
+[project.urls]
+Repository = "https://github.com/yorimi-tamai/ComfyUI-RealProductScene"
+
+[tool.comfy]
+PublisherId = "yorimi"
+DisplayName = "ComfyUI-RealProductScene"
+Repository = "https://github.com/yorimi-tamai/ComfyUI-RealProductScene"
