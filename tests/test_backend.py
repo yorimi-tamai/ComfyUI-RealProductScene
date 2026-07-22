@@ -16,7 +16,7 @@ import generate as GEN
 
 
 def args(**kw):
-    base = dict(bg=None, shadow_dir=None)
+    base = dict(bg=None, scene=None, shadow_dir=None)
     base.update(kw)
     return SimpleNamespace(**base)
 
@@ -61,6 +61,26 @@ def main() -> int:
 
     b, _ = GEN.resolve_backend({}, args(), root)
     ok &= check("missing backend key -> comfyui default", b == "comfyui")
+
+    # --- Phase 7: swap backend (--scene > --bg > config) ---
+    b, p = GEN.resolve_backend({"backend": "comfyui"}, args(scene="/cli/full.png"), root)
+    ok &= check("--scene implies swap", b == "swap" and p == Path("/cli/full.png"))
+
+    b, p = GEN.resolve_backend(
+        {"backend": "swap", "scene_path": "inputs/refs/s.png"}, args(), root)
+    ok &= check("config swap + scene_path -> swap, root-relative",
+                b == "swap" and p == root / "inputs/refs/s.png")
+
+    b, _ = GEN.resolve_backend({"backend": "comfyui"},
+                               args(scene="/s.png", bg="/b.png"), root)
+    ok &= check("--scene beats --bg", b == "swap")
+
+    raised = False
+    try:
+        GEN.resolve_backend({"backend": "swap"}, args(), root)
+    except ValueError:
+        raised = True
+    ok &= check("config swap + no scene_path -> ValueError", raised)
 
     # --- frame_from_background: actual pixel size, any aspect ---
     with tempfile.TemporaryDirectory() as td:

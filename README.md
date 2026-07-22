@@ -136,8 +136,9 @@ pip install -r ai-product-scene-generator/requirements.txt   # Pillow（ComfyUI 
 `python scripts/generate.py --server 127.0.0.1:8188` 走 HTTP 打 ComfyUI 的兩個 API graph。
 開發/回歸測試用途，不對外承諾維護。
 
-> **執行環境**：需 torch + transformers（Phase 3 深度偵測用）。用 ComfyUI 的 venv 最省事，例如
-> `"…/ComfyUI/.venv/bin/python" scripts/generate.py`；系統 Python 若無 torch，深度偵測會自動 fallback 回固定值。
+> **執行環境**：需 torch + transformers（Phase 3 深度偵測用）、`opencv-python`（Phase 7 swap 對齊用）。
+> 用 ComfyUI 的 venv 最省事，例如 `"…/ComfyUI/.venv/bin/python" scripts/generate.py`；系統 Python 若無 torch，
+> 深度偵測會自動 fallback 回固定值。opencv 只有 `swap` 後端才需要。
 
 **Phase 3 — 自動接觸面偵測**：生成背景後，用深度圖（`Depth-Anything-V2-Small`）自動求接觸線，
 產品自動接地，換不同高度的桌面 prompt 不必手改 config。傾斜/俯視、多層曖昧、低信心或無模型時，
@@ -161,16 +162,27 @@ pip install -r ai-product-scene-generator/requirements.txt   # Pillow（ComfyUI 
 
 | 後端 | 怎麼觸發 | 行為 |
 |---|---|---|
-| `comfyui`（預設） | 不給 `--bg`、`generation.json` `backend:comfyui` | 讀產品配光 → 生成 9:16 空背景（現狀全自動） |
-| `manual` | `--bg <path>`，或 `backend:manual` + `manual_bg_path` | 用你現成的背景（Midjourney / GPT / 自拍），**跳過生成** |
+| `comfyui`（預設） | 不給 `--bg`/`--scene`、`generation.json` `backend:comfyui` | 讀產品配光 → 生成 9:16 空背景（現狀全自動） |
+| `manual` | `--bg <path>`，或 `backend:manual` + `manual_bg_path` | 用你現成的**空背景**（Midjourney / GPT / 自拍），**跳過生成**，我們烘陰影再合成 |
+| `swap`（Phase 7） | `--scene <path>`，或 `backend:swap` + `scene_path` | 用 GPT 生的**完整場景**（含產品）當模板，把真產品刷回、繼承場景陰影/光（見下方 Phase 7） |
 
-- 優先序：`--bg` > `config`。`manual` 缺圖會明確報錯。
+- 優先序：`--scene` > `--bg` > `config`。`manual`/`swap` 缺圖會明確報錯。
 - 手動背景**吃實際尺寸**當畫框（任意比例都能跑）；非 9:16 印軟警告、**不自動裁**（要 9:16 自己先裁好）。原圖不被修改。
 - 手動模式的陰影落向用 `--shadow-dir left|right|none`（預設 `right`）——它在全自動模式也能覆蓋產品配光分析的落向。
 - ⚠️ 合成貼產品仍走 ComfyUI，故 `manual` 後端**仍需 ComfyUI server 開著**（只為合成、不生成）。
 - Midjourney 沒有官方 API、GPT image 要金鑰＋付費——`manual` 後端就是繞過這些的通用解：任何工具生的背景都能丟進來接。
 
 例：`python scripts/generate.py --server 127.0.0.1:8188 --bg ~/mj_scene.png --shadow-dir left`。
+
+**Phase 7 — GPT 場景刷回真產品（`swap` 後端）**：讓 GPT 生一張**連產品的完整場景**（陰影、光、接地都由 GPT 算得渾然一體），我們把場景裡那顆 AI 假產品的位置**換回你的真產品**——繼承 GPT 的自然陰影/光，同時產品像素 100% 真實。
+
+- **前提（重要）**：生成時**把你的真去背產品圖丟給 GPT 當參考輸入**，叫它「照這顆產品擺進場景」。這樣 GPT 畫出來的假產品跟真的同姿態同比例，換回時才對得準。把生好的完整場景丟進 `inputs/references/`，用 `--scene <path>` 指定。
+- **不接 API**：同 Phase 6，背景/場景你手動用 GPT 生（不代輸入金鑰），本管線只吃現成圖。
+- 流程：`align`（opencv `matchTemplate` 找出 GPT 產品的位置+大小）→ 真產品去背、去 halo、微放大力保覆蓋 → 邊緣光包裹（PIL，只碰最外圈、內部不動）→ ComfyUI 合成貼上。**跳過**深度偵測、烘陰影、配光（都來自 GPT 場景）。
+- 對齊自動約 8-9 成準，其餘用四鈕 `--offset-x/y`、`--scale-mult` 兜底（同 Phase 3 哲學）。`--shadow-dir` 在 `swap` 無意義（會印忽略警告）。
+- ⚠️ 合成仍走 ComfyUI，故 `swap` 也需 server 開著（只為合成）。
+
+例：`python scripts/generate.py --scene ~/gpt_scene.png`（可加 `--scale-mult 1.05 --offset-x 20` 微調）。
 
 ## 授權
 
@@ -179,5 +191,6 @@ pip install -r ai-product-scene-generator/requirements.txt   # Pillow（ComfyUI 
 ## 狀態
 
 V2 完成：Phase 1/2/2.5 管線 + Phase 3（深度自動接地 + 人工修正介面）+ Phase 4 節點包打包
-+ Phase 5（漸層接觸陰影 + 難例選面加固 + K 自適應）+ Phase 6（自帶背景 / 多後端）。
++ Phase 5（漸層接觸陰影 + 難例選面加固 + K 自適應）+ Phase 6（自帶背景 / 多後端）
++ Phase 7（GPT 場景刷回真產品 / `swap` 後端）。
 詳見 `PLAN.md` 與 `plans/`。

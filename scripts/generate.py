@@ -22,7 +22,7 @@ import random
 import sys
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import geometry as G
@@ -31,6 +31,23 @@ import analyze_product_light as AL
 import detect_surface as DS
 import shadow as SH
 from comfy_client import ComfyClient, ComfyUIError
+
+# Phase 7 swap backend: how many px to erode the product alpha to kill the
+# cut-out halo before compositing. align/cv2 are imported lazily inside the
+# swap branch so the other backends stay opencv-free.
+SWAP_DEFRINGE_PX = 3
+
+# Phase 7 "B" edge treatment (light-wrap), done in PIL before the ComfyUI
+# composite — same division of labour as bake_shadow. Product INTERIOR pixels
+# are never touched; only a thin rim band along the edge gets scene light
+# screened in, plus a soft alpha feather for a seamless paste. Live-calibrated
+# on the basket scene (task 6). rim/strength wider+stronger reads more "melted
+# in"; too much and the edge glows.
+SWAP_LW_RIM_PX = 7        # width of the rim band the wrap affects
+SWAP_LW_STRENGTH = 0.28   # how strongly scene light screens onto the rim (0..1)
+SWAP_LW_FEATHER_PX = 0.0  # alpha-edge softening; >0 smears a bright halo where
+                          # the scene behind the edge is bright, so keep it off —
+                          # defringe already gives a clean edge (task 6 calibration)
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -82,6 +99,42 @@ def bake_shadow(bg_path: Path, g: G.Geometry, out_path: Path) -> Path:
     return out_path
 
 
+def bake_light_wrap(product: Image.Image, scene: Image.Image, x: int, y: int,
+                    rim_px: int = SWAP_LW_RIM_PX, strength: float = SWAP_LW_STRENGTH,
+                    feather_px: float = SWAP_LW_FEATHER_PX) -> Image.Image:
+    """Phase 7 "B": edge-feather + light-wrap the (already final-size) product
+    against the scene it will be dropped into, in pure PIL. The product's ambient
+    surroundings are sampled, blurred, and SCREENED onto a thin rim band just
+    inside the alpha edge — so the scene's light appears to wrap the product
+    silhouette. The interior (rim mask == 0) is left byte-for-byte; only the
+    outer edge changes. The alpha edge is also softened for a seamless composite.
+    rim_px/strength/feather_px are live-calibrated. strength<=0 disables the wrap
+    (feather still applies)."""
+    w, h = product.size
+    prod = product.convert("RGBA")
+    a = prod.getchannel("A")
+    rgb = prod.convert("RGB")
+
+    if strength > 0 and rim_px > 0:
+        # ambient light under/around the product's footprint (crop stays w x h;
+        # PIL zero-pads if the product spills past the scene edge — negligible)
+        region = scene.convert("RGB").crop((x, y, x + w, y + h))
+        if region.size != (w, h):
+            region = region.resize((w, h))
+        blur = region.filter(ImageFilter.GaussianBlur(max(w, h) * 0.06))
+        # rim = alpha minus its erosion -> a ring hugging the edge, then feathered
+        inner = a.filter(ImageFilter.MinFilter(2 * rim_px + 1))
+        rim = ImageChops.subtract(a, inner).filter(ImageFilter.GaussianBlur(feather_px))
+        rim = rim.point(lambda v: int(v * strength))
+        screened = ImageChops.screen(rgb, blur)
+        rgb = Image.composite(screened, rgb, rim)
+
+    a2 = a.filter(ImageFilter.GaussianBlur(feather_px)) if feather_px > 0 else a
+    out = rgb.convert("RGBA")
+    out.putalpha(a2)
+    return out
+
+
 def resolve_surface(bg_path, scene_cfg: dict, args) -> float:
     """Pick the contact-line fraction. Precedence:
       1. --surface-line-frac  (MANUAL override, highest)
@@ -114,11 +167,18 @@ def effective_overrides(product_cfg: dict, args) -> dict:
 
 
 def resolve_backend(gen: dict, args, root: Path):
-    """Pick the background backend and (for manual) the image path. Precedence
-    (Phase 6): --bg wins and implies manual; else config `backend`.
+    """Pick the background backend and (for manual/swap) the image path.
+    Precedence: --scene wins and implies swap; --bg wins and implies manual;
+    else config `backend`.
       - comfyui: generate the background with ComfyUI (returns path None)
-      - manual : use a ready-made background (MJ / GPT / photo), skip generation
-    Returns (backend, bg_path). Raises ValueError if manual has no image."""
+      - manual : use a ready-made empty background (MJ/GPT/photo); we bake the
+                 shadow and composite the product (Phase 6)
+      - swap   : use a GPT-generated FULL scene (product already in it) as the
+                 template; align + brush the real product back over the fake one,
+                 inheriting the scene's shadow/light (Phase 7)
+    Returns (backend, path). Raises ValueError if manual/swap has no image."""
+    if getattr(args, "scene", None) is not None:
+        return "swap", Path(args.scene)
     if getattr(args, "bg", None) is not None:
         return "manual", Path(args.bg)
     backend = str(gen.get("backend", "comfyui")).strip().lower()
@@ -130,6 +190,14 @@ def resolve_backend(gen: dict, args, root: Path):
                 "or set generation.json manual_bg_path")
         p = Path(mp)
         return "manual", (p if p.is_absolute() else root / p)
+    if backend == "swap":
+        sp = gen.get("scene_path")
+        if not sp:
+            raise ValueError(
+                "backend 'swap' needs a full GPT scene image: pass --scene <path> "
+                "or set generation.json scene_path")
+        p = Path(sp)
+        return "swap", (p if p.is_absolute() else root / p)
     return "comfyui", None
 
 
@@ -165,12 +233,22 @@ def build_geometry(crop, frame_w, frame_h, product_cfg: dict, surface_frac: floa
                      product_cfg["target_box"], surface_frac, overrides, shadow_dir)
 
 
-def print_geometry(g: G.Geometry, product_path: Path, shadow_dir: str) -> None:
+def print_geometry(g: G.Geometry, product_path: Path, shadow_dir) -> None:
     print(f"product : {product_path.name} -> {g.product_w}x{g.product_h} "
           f"@({g.product_x},{g.product_y})  base@{g.product_y + g.product_h} "
           f"(surface {g.surface_y})  shadow_dir={shadow_dir}")
-    print(f"shadow  : sticker {g.shadow_w}x{g.shadow_h}@({g.shadow_x},{g.shadow_y}) "
-          f"op{g.shadow_opacity} falloff{g.shadow_falloff} core{g.shadow_core_frac}")
+    if g.shadow_w > 0:  # swap bakes no shadow -> nothing to report
+        print(f"shadow  : sticker {g.shadow_w}x{g.shadow_h}@({g.shadow_x},{g.shadow_y}) "
+              f"op{g.shadow_opacity} falloff{g.shadow_falloff} core{g.shadow_core_frac}")
+
+
+def swap_geometry(scene_path: Path, crop, overrides: dict) -> G.Geometry:
+    """Phase 7: locate GPT's rendered product in the scene and build the
+    Geometry that drops the real product over it (align + force-cover)."""
+    import align as A
+    r = A.locate_product(scene_path, crop)
+    print(f"align   : GPT product bbox={r.bbox} score={r.score:.3f} scale={r.scale:.3f}")
+    return A.build_swap_geometry(r, overrides)
 
 
 def main(argv=None) -> int:
@@ -180,8 +258,12 @@ def main(argv=None) -> int:
     ap.add_argument("--product", default=None, help="override product_image path")
     # --- Phase 6: background backend ---
     ap.add_argument("--bg", default=None,
-                    help="use a ready-made background image (MJ/GPT/photo); "
+                    help="use a ready-made EMPTY background image (MJ/GPT/photo); "
                          "implies manual backend, skips ComfyUI generation")
+    ap.add_argument("--scene", default=None,
+                    help="use a GPT-generated FULL scene (product already in it) as "
+                         "a template; implies swap backend — align + brush the real "
+                         "product back over the fake one, inheriting its shadow/light")
     ap.add_argument("--shadow-dir", dest="shadow_dir", default=None,
                     choices=["left", "right", "none"],
                     help="cast-shadow direction; overrides product-light analysis "
@@ -212,12 +294,17 @@ def main(argv=None) -> int:
 
     product_path = Path(args.product or (root / product_cfg["product_image"]))
 
-    # --- Phase 6: pick the background backend (--bg > config) ---
+    # --- pick the background backend (--scene > --bg > config) ---
     try:
         backend, bg_src = resolve_backend(gen, args, root)
     except ValueError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 2
+
+    # swap inherits shadow/light from the GPT scene, so --shadow-dir is moot
+    if backend == "swap" and getattr(args, "shadow_dir", None) is not None:
+        print("⚠️  --shadow-dir is ignored in swap backend "
+              "(shadow comes from the GPT scene)")
 
     # --- fail fast: reject non-transparent input BEFORE touching ComfyUI ---
     try:
@@ -241,19 +328,25 @@ def main(argv=None) -> int:
             print(f"lighting: manual (scene.json) -> {scene_cfg.get('lighting')}")
         positive, _negative = PB.load_prompts(root, scene_render)
         frame_w, frame_h = int(gen["width"]), int(gen["height"])
-    else:  # manual: use the ready-made background's ACTUAL size as the frame
+    else:  # manual / swap: the ready-made image's ACTUAL size is the frame
         if not bg_src.exists():
-            print(f"ERROR: background image not found: {bg_src}", file=sys.stderr)
+            kind = "scene" if backend == "swap" else "background"
+            print(f"ERROR: {kind} image not found: {bg_src}", file=sys.stderr)
             return 2
-        print(f"backend : manual -> {bg_src}")
+        print(f"backend : {backend} -> {bg_src}")
         frame_w, frame_h = frame_from_background(bg_src)
 
-    shadow_dir = resolve_shadow_dir(backend, args, profile)
+    # swap places the product by matching GPT's rendered product (align), so it
+    # never casts/bakes a shadow — leave shadow_dir out of it entirely.
+    shadow_dir = None if backend == "swap" else resolve_shadow_dir(backend, args, profile)
 
     # --- tight-crop the product now (needed for both geometry and upload).
     #     The contact-surface line is resolved LATER, once the background
     #     exists, so depth detection can adapt to it (Phase 3). ---
     crop = G.tight_crop(product_img)
+    if backend == "swap":
+        # kill the cut-out halo so it doesn't show against GPT's scene (Phase 7)
+        crop = G.defringe(crop, SWAP_DEFRINGE_PX)
     cropped = root / "outputs" / "composites" / "_product_cropped.png"
     cropped.parent.mkdir(parents=True, exist_ok=True)
     crop.save(cropped)
@@ -261,16 +354,21 @@ def main(argv=None) -> int:
     eff_ov = effective_overrides(product_cfg, args)
 
     if args.dry_run:
-        # no depth pass in dry-run -> manual line if given, else the config line
-        if args.surface_line_frac is not None:
-            frac = float(args.surface_line_frac)
-            print(f"surface : MANUAL -> {frac:.3f}")
+        if backend == "swap":
+            # align needs no ComfyUI, so it runs in dry-run too
+            g = swap_geometry(bg_src, crop, eff_ov)
+            print_geometry(g, product_path, "n/a (swap)")
         else:
-            frac = float(scene_cfg["surface_line_frac"])
-            print(f"surface : dry-run uses config -> {frac:.3f}")
-        g = build_geometry(crop, frame_w, frame_h, product_cfg, frac, eff_ov,
-                           shadow_dir)
-        print_geometry(g, product_path, shadow_dir)
+            # no depth pass in dry-run -> manual line if given, else config line
+            if args.surface_line_frac is not None:
+                frac = float(args.surface_line_frac)
+                print(f"surface : MANUAL -> {frac:.3f}")
+            else:
+                frac = float(scene_cfg["surface_line_frac"])
+                print(f"surface : dry-run uses config -> {frac:.3f}")
+            g = build_geometry(crop, frame_w, frame_h, product_cfg, frac, eff_ov,
+                               shadow_dir)
+            print_geometry(g, product_path, shadow_dir)
         print(f"dry-run: skipping ComfyUI. backend={backend}, "
               f"frame={frame_w}x{frame_h}. geometry OK.")
         return 0
@@ -283,34 +381,54 @@ def main(argv=None) -> int:
         return 3
 
     try:
-        # --- Stage 1: obtain the background ---
-        if backend == "comfyui":
-            bg_graph = load_json(root / "workflows" / "comfyui_api" / "bg_generate_api.json")
-            seed = random.randint(0, 2**63 - 1) if int(gen["seed"]) < 0 else int(gen["seed"])
-            print(f"seed    : {seed}")
-            inject_background(bg_graph, positive, gen, seed)
-            bg_out = root / gen.get("bg_output_path", "outputs/backgrounds/background.png")
-            bg_bytes = client.run(bg_graph, save_to=bg_out)
-            if not bg_bytes:
-                print("ERROR: background stage produced no image", file=sys.stderr)
-                return 4
-            print(f"background saved -> {bg_out}")
-        else:  # manual: the ready-made image IS the background (left untouched)
+        if backend == "swap":
+            # --- Phase 7: GPT scene IS the background (product already in it);
+            #     locate it, then brush the real product over the same spot.
+            #     No depth, no bake_shadow, no lighting — all inherited. ---
+            g = swap_geometry(bg_src, crop, eff_ov)
+            print_geometry(g, product_path, "n/a (swap)")
+            # "B": light-wrap the product against the scene (PIL), then let the
+            # ComfyUI composite paste it. Bake at the FINAL size so node 65's
+            # rescale is a no-op and the wrap aligns with the paste position.
+            scene_img = Image.open(bg_src).convert("RGBA")
+            prod_final = crop.resize((g.product_w, g.product_h), Image.LANCZOS)
+            wrapped = bake_light_wrap(prod_final, scene_img, g.product_x, g.product_y)
+            wrapped.save(cropped)
+            print(f"lightwrap: rim{SWAP_LW_RIM_PX} strength{SWAP_LW_STRENGTH} "
+                  f"feather{SWAP_LW_FEATHER_PX}")
             bg_out = bg_src
+        else:
+            # --- Stage 1: obtain the background ---
+            if backend == "comfyui":
+                bg_graph = load_json(root / "workflows" / "comfyui_api" / "bg_generate_api.json")
+                seed = random.randint(0, 2**63 - 1) if int(gen["seed"]) < 0 else int(gen["seed"])
+                print(f"seed    : {seed}")
+                inject_background(bg_graph, positive, gen, seed)
+                bg_out = root / gen.get("bg_output_path", "outputs/backgrounds/background.png")
+                bg_bytes = client.run(bg_graph, save_to=bg_out)
+                if not bg_bytes:
+                    print("ERROR: background stage produced no image", file=sys.stderr)
+                    return 4
+                print(f"background saved -> {bg_out}")
+            else:  # manual: the ready-made image IS the background (left untouched)
+                bg_out = bg_src
 
-        # --- Phase 3: resolve the contact surface FROM the background,
-        #     then compute geometry against it ---
-        frac = resolve_surface(bg_out, scene_cfg, args)
-        g = build_geometry(crop, frame_w, frame_h, product_cfg, frac, eff_ov,
-                           shadow_dir)
-        print_geometry(g, product_path, shadow_dir)
+            # --- Phase 3: resolve the contact surface FROM the background,
+            #     then compute geometry against it ---
+            frac = resolve_surface(bg_out, scene_cfg, args)
+            g = build_geometry(crop, frame_w, frame_h, product_cfg, frac, eff_ov,
+                               shadow_dir)
+            print_geometry(g, product_path, shadow_dir)
 
-        # --- Phase 5: bake the contact shadow into the bg before upload ---
-        bg_shadowed = root / "outputs" / "composites" / "_bg_with_shadow.png"
-        bake_shadow(bg_out, g, bg_shadowed)
+            # --- Phase 5: bake the contact shadow into the bg before upload ---
+            bg_shadowed = root / "outputs" / "composites" / "_bg_with_shadow.png"
+            bake_shadow(bg_out, g, bg_shadowed)
+            bg_out = bg_shadowed
 
-        # --- Stage 2: composite (product only; shadow already in the bg) ---
-        bg_name = client.upload_image(bg_shadowed)
+        # --- Stage 2: composite the product onto the (shadowed | GPT) background.
+        #     comfyui/manual pre-baked the shadow into bg_out; swap uses the raw
+        #     GPT scene. Same composite graph either way. ---
+        bg_name = client.upload_image(bg_out)
         product_name = client.upload_image(cropped)
         comp_graph = load_json(root / "workflows" / "comfyui_api" / "composite_api.json")
         inject_composite(comp_graph, bg_name, product_name, g, "product_scene_v2")

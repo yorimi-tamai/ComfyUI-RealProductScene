@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 class NoAlphaError(ValueError):
@@ -76,6 +76,20 @@ def tight_crop(img: Image.Image) -> Image.Image:
     if bbox is None:
         raise NoAlphaError("image is fully transparent — nothing to place.")
     return img.crop(bbox)
+
+
+def defringe(img: Image.Image, erode_px: int = 2) -> Image.Image:
+    """Shrink the alpha region by `erode_px` to kill the cut-out halo — the thin
+    desaturated fringe a background-removal tool leaves on the product edge, which
+    shows against any composite. A MinFilter of size (2*erode_px+1) erodes the
+    alpha; RGB is untouched (Phase 7: product interior stays byte-for-byte).
+    erode_px <= 0 is a no-op."""
+    if erode_px <= 0:
+        return img
+    img = img.convert("RGBA")
+    r, g, b, a = img.split()
+    a = a.filter(ImageFilter.MinFilter(2 * erode_px + 1))
+    return Image.merge("RGBA", (r, g, b, a))
 
 
 def compute(crop_w: int, crop_h: int, frame_w: int, frame_h: int,

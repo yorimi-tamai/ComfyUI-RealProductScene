@@ -4,3 +4,6 @@
 # pinned here. Pillow is the only extra dependency the node "brain" needs;
 # ComfyUI usually already ships it, but declare it so a bare install works.
 Pillow>=9.0.0
+# opencv is used by the Phase 7 swap backend for template-match alignment
+# (locating GPT's generated product in the scene). Only needed for `backend: swap`.
+opencv-python>=4.8.0

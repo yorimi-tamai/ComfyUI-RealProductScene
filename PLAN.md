@@ -1,8 +1,8 @@
 # AI Product Scene Generator — Master Roadmap
 
 > 通用可客製產品情境合成管線：一張去背 PNG + 背景提示詞 → 自動產出場景合成產品照
-> 狀態：in-progress（V1 + Phase 1–5 全完成並 live 驗證）
-> 最後更新：2026-07-21
+> 狀態：in-progress（V1 + Phase 1–7 全完成並 live 驗證）
+> 最後更新：2026-07-22
 
 ## 大方向
 
@@ -52,6 +52,12 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
   - 吃背景實際尺寸＋非 9:16 軟警告＋不裁；MJ/GPT 官方 API 不接（手動背景即解）
   - 測試 `test_backend.py`(13) 全綠、既有不回歸；manual live 1024² 接地、comfyui 回歸正常
   - ⚠️ 合成仍走 ComfyUI，故 manual 仍需 server（只為合成）
+- ✅ **Phase 7 — GPT 場景 → ComfyUI 刷回真產品（swap 後端）**（`plans/phase7-swap-mode.md`，done，live 驗證）
+  - 新增第三後端 `backend: swap`：GPT 生**完整場景**（含產品）當模板 → 對齊後把真產品「刷回」場景裡假產品的位置 → 繼承 GPT 自然陰影/光、產品像素 100% 真實
+  - 對齊＝混合（opencv `matchTemplate`／`TM_CCOEFF_NORMED`＋透明區均值填 + 四鈕手動）；刷回＝B 邊緣光包裹（`bake_light_wrap` PIL，內部不動，ComfyUI 合成）；覆蓋＝分段（v1 defringe+微放大力保覆蓋，除抹+inpaint 兜底後續）
+  - swap 跳過 depth/bake_shadow/配光（都來自 GPT 場景）；合成沿用 `composite_api.json`
+  - 2 例 live 驗證：籃子（`outputs/phase7_swap_final.png`）＋ slingback 鞋（後者逼出 `scale_max` 1.5→2.5 bug 並修）；破例加 `opencv-python`
+  - ⚠️ 殘留：細長 silhouette（帶/細跟）對對齊誤差敏感、易露雙影，靠四鈕或後續除抹+inpaint；姿態差太多自動抓不準
 
 ## 階段依賴
 
