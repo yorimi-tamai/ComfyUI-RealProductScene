@@ -1,7 +1,8 @@
 # AI Product Scene Generator — Master Roadmap
 
 > 通用可客製產品情境合成管線：一張去背 PNG + 背景提示詞 → 自動產出場景合成產品照
-> 狀態：in-progress（V1 + Phase 1–7 全完成並 live 驗證）
+> 狀態：in-progress（V1 + Phase 1–7 全完成並 live 驗證；Phase 4 節點包已公開發佈為 `ComfyUI-RealProductScene`）
+> repo：<https://github.com/yorimi-tamai/ComfyUI-RealProductScene>（本地資料夾仍為 `ai-product-scene-generator`）
 > 最後更新：2026-07-22
 
 ## 大方向
@@ -32,12 +33,14 @@ V2（本 roadmap）：加一層 Python 編排 + 幾何自適應，讓**任意比
   - **人工修正介面**（自動只 ~70-80% 準）：CLI 四鈕 `--surface-line-frac` / `--offset-x` / `--offset-y` / `--scale-mult`，優先序 manual > fixed > auto
   - 驗證：3 種桌面高度全接地 + fresh 全自動接地；`tests/` 兩支單元測試（detect 11 + manual 9）；scope 限正面/微俯，強傾斜面 fallback
   - ⚠️ 殘留：接觸陰影仍偏軟（淡灰暈，Phase 2.5 範疇）；玻璃/多層堆疊等難例靠 fallback + 人工鈕兜底
-- ✅ **Phase 4 — 打包成 ComfyUI 自訂節點包並發佈**（`plans/phase4-comfyui-node-pack.md`，done，live 驗證）
+- ✅ **Phase 4 — 打包成 ComfyUI 自訂節點包並發佈**（`plans/phase4-comfyui-node-pack.md`，done，live 驗證；2026-07-22 **正式公開**）
   - 目標：公開 GitHub repo，讓其他 ComfyUI 使用者 git-clone 裝來用（UI 內一份可載入的範例工作流）；Manager registry 順延
   - 兩顆節點：`AnalyzeProductLighting`（生成前，產品→prompt+shadow_dir）＋ `CompositeProductScene`（生成後，整包裁切/幾何/雙層陰影/合成）；都 import 現有共用大腦
   - tensor 只在節點進出口轉、內部 PIL 原封；產品走 IMAGE+MASK 拼 RGBA；範例綁 z-image-turbo + README 換模型指南；MIT
   - ⚠️ **刻意翻轉下方「不用自訂節點」的排除項**——為發佈而為之的架構決定
   - Phase 3 深度偵測順延（不進 v1）；CLI 保留自用
+  - ✅ **發佈收尾（2026-07-22，見 `handoff-archive/…Phase4發佈公開repo｜#1…`）**：改名 `ai-product-scene-generator` → **`ComfyUI-RealProductScene`**（合 registry `ComfyUI-` 慣例）、LICENSE 版權人 → `zeczec`、公開到 <https://github.com/yorimi-tamai/ComfyUI-RealProductScene>（個人帳號、Public、HEAD `cf83a13`）。本地資料夾仍叫 `ai-product-scene-generator`
+  - ⬜ **B3 待辦：ComfyUI Manager registry 上架**——發佈最後一哩，獨立里程碑（需裝 `gh` + 補 registry metadata + 開 PR 過審核）
 - ✅ **Phase 5 — 品質打磨（合成擬真度）**（`plans/phase5-quality-polish.md`，done，live 驗證）
   - 降貼圖感：#1 漸層接觸陰影（含 AO，`shadow.py` 生成橢圓徑向漸層貼圖，Python `bake_shadow`
     合成進背景取代 ComfyUI 矩形色塊）＋ #2 難例選面加固（次大面≥70%→曖昧走 fallback）
